@@ -196,12 +196,12 @@ dialog .card{margin:12px;max-height:calc(100vh - 24px);overflow:auto}
 
     <div id="v-done">
       <div class="section">
-        <button class="btn primary big" id="v-share" disabled>Share to TikTok / apps</button>
-        <p class="small muted" style="margin:8px 2px 0">Copies the TikTok caption, then opens your share sheet — pick TikTok (or YouTube) and paste the caption.</p>
+        <button class="btn primary big" id="v-share" disabled>Share / save video</button>
+        <p class="small muted" style="margin:8px 2px 0">The TikTok caption is copied for you. If TikTok is in the share sheet, pick it. If it isn't, choose <b>Save Video</b> (iPhone) or <b>Download</b> (Android), then open the TikTok app → <b>+</b> → <b>Upload</b> → pick the video → paste the caption.</p>
       </div>
       <div class="section row">
         <a class="btn" id="v-download" download>⬇ Download</a>
-        <a class="btn tt" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank" rel="noopener">TikTok upload page</a>
+        <a class="btn tt" id="v-tiktok-web" href="https://www.tiktok.com/tiktokstudio/upload" target="_blank" rel="noopener">TikTok upload (computer)</a>
       </div>
 
       <h2>YouTube</h2>
@@ -912,6 +912,9 @@ $("#s-test").onclick = async () => {
   out.innerHTML = lines.join("<br>");
   S = prev; repoInfo = null;
 };
+
+/* the TikTok web uploader only works on a computer — hide it on phones */
+if (matchMedia("(pointer: coarse)").matches) $("#v-tiktok-web").hidden = true;
 
 /* ───────────────────────── boot ───────────────────────── */
 async function boot() {

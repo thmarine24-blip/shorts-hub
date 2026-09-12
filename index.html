@@ -420,7 +420,10 @@ async function dispatch(workflow, inputs) {
 /* ───────────────────────── repo config (themes, prompt) ───────────────────────── */
 const FALLBACK_PROMPT = `You write scripts for a faceless YouTube Shorts / TikTok channel called "{channel}". Narrator style: {style}.
 Topic: {theme}. Do not repeat: {avoid}.
-Choose the format that best fits the topic: a true fact or mini-story, ranked list, practical how-to, myth-vs-reality breakdown, comparison, fictional story, opinion, or recap. Pick ONE specific, sharp angle.
+INTENT MATCHING IS MANDATORY. Make the requested video; do not automatically turn the topic into trivia, education, or an explanation.
+If the topic names an experience, action, mood, aesthetic, or entertainment concept, create that experience directly with vivid, sensory, action-led lines. For example, "ASMR fruit cutting" means the cutting experience itself—not brain science, history, popularity, benefits, statistics, or why people enjoy it.
+Match tips and how-to topics with useful steps; rankings with a clear list; stories with a narrative; and opinions with an explicitly subjective argument. Use facts, trivia, history, science, myths, or an explainer ONLY when the topic explicitly requests that treatment.
+Pick ONE specific, sharp angle. The title and hook must sell the requested experience or format, not reframe it as an explainer.
 Use {min_words}-{max_words} words in 5-8 scenes. Start with a bold hook under 14 words, build momentum, and end with a short call to action.
 Do not invent factual claims. Make opinions clearly subjective. Each scene gets a concrete 2-4 word stock-footage "visual" query.
 Return ONLY JSON: {{"topic":"","title":"","hook":"2-5 WORDS","scenes":[{{"text":"","visual":""}}],"description":"","hashtags":[],"fact_check":[]}}`;

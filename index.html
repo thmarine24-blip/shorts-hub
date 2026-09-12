@@ -989,15 +989,31 @@ $("#v-delete").onclick = async () => {
   const btn = $("#v-delete");
   if (Date.now() - delArmed > 4000) { delArmed = Date.now(); btn.textContent = "Tap again to delete for good"; setTimeout(() => btn.textContent = "Delete video", 4000); return; }
   btn.disabled = true;
+  const failedAttempt = j.state === "failed";
+  if (failedAttempt) {
+    const dismissed = store.get("dismissed", {});
+    store.set("dismissed", { ...(dismissed && !Array.isArray(dismissed) ? dismissed : {}), [j.id]: Date.now() });
+    store.set("pending", store.get("pending", []).filter(p => p.id !== j.id));
+    jobs = jobs.filter(x => x.id !== j.id);
+    store.set("jobs", jobs.map(x => ({ ...x, renderRun: null, ytRun: null })));
+    closeViewer(); renderList();
+  }
   try {
     const paths = Object.keys(files).filter(p => p.startsWith(`jobs/${j.id}/`));
     if (paths.length) await commitMedia(Object.fromEntries(paths.map(p => [p, null])), `hub: delete ${j.title}`);
-    store.set("pending", store.get("pending", []).filter(p => p.id !== j.id));
-    const dismissed = store.get("dismissed", {});
-    store.set("dismissed", { ...(dismissed && !Array.isArray(dismissed) ? dismissed : {}), [j.id]: Date.now() });
-    jobs = jobs.filter(x => x.id !== j.id); closeViewer(); renderList(); toast("Deleted.");
+    if (!failedAttempt) {
+      store.set("pending", store.get("pending", []).filter(p => p.id !== j.id));
+      const dismissed = store.get("dismissed", {});
+      store.set("dismissed", { ...(dismissed && !Array.isArray(dismissed) ? dismissed : {}), [j.id]: Date.now() });
+      jobs = jobs.filter(x => x.id !== j.id);
+      store.set("jobs", jobs.map(x => ({ ...x, renderRun: null, ytRun: null })));
+      closeViewer(); renderList();
+    }
+    toast(failedAttempt ? "Failed attempt removed." : "Deleted.");
     refresh(true);
-  } catch (e) { toast(e.message, true); }
+  } catch (e) {
+    toast(failedAttempt ? "Failed attempt removed from this Hub." : e.message, !failedAttempt);
+  }
   finally { btn.disabled = false; btn.textContent = "Delete video"; delArmed = 0; }
 };
 async function jobScript(j) {

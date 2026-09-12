@@ -419,11 +419,13 @@ async function dispatch(workflow, inputs) {
 
 /* ───────────────────────── repo config (themes, prompt) ───────────────────────── */
 const FALLBACK_PROMPT = `You write scripts for a faceless YouTube Shorts / TikTok channel called "{channel}". Narrator style: {style}.
-Theme: {theme}. Pick ONE specific, surprising, TRUE fact. Do not repeat: {avoid}.
-Only use well-established facts. {min_words}-{max_words} words in 5-8 scenes; scene 1 is a bold hook; end with "Follow for more".
-Each scene gets a 2-4 word stock footage "visual" search query.
-Return ONLY JSON: {{"topic":"","title":"","hook":"2-5 WORDS","scenes":[{{"text":"","visual":""}}],"description":"","hashtags":["#facts"],"fact_check":["claim — source"]}}`;
+Topic: {theme}. Do not repeat: {avoid}.
+Choose the format that best fits the topic: a true fact or mini-story, ranked list, practical how-to, myth-vs-reality breakdown, comparison, fictional story, opinion, or recap. Pick ONE specific, sharp angle.
+Use {min_words}-{max_words} words in 5-8 scenes. Start with a bold hook under 14 words, build momentum, and end with a short call to action.
+Do not invent factual claims. Make opinions clearly subjective. Each scene gets a concrete 2-4 word stock-footage "visual" query.
+Return ONLY JSON: {{"topic":"","title":"","hook":"2-5 WORDS","scenes":[{{"text":"","visual":""}}],"description":"","hashtags":[],"fact_check":[]}}`;
 let RC = { themes: [], prompt: FALLBACK_PROMPT, channel: "Fact Drop", style: "curious, punchy", minW: 95, maxW: 130, temp: 0.9, history: [] };
+let repoConfigReady = Promise.resolve();
 function tomlValue(toml, section, key) {
   const sec = new RegExp(`^\\[${section}\\][^\\[]*`, "m").exec(toml || "");
   if (!sec) return null;
@@ -482,11 +484,13 @@ function cleanScript(s) {
     .map(t => String(t).trim().replace(/\s+/g, "")).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t);
   return { topic: String(s.topic || s.title || "").trim(), title: String(s.title || scenes[0].text).trim().slice(0, 100),
            hook: String(s.hook || "").trim(), scenes, description: String(s.description || "").trim(),
-           hashtags: tags.length ? tags : ["#facts", "#didyouknow"],
+           hashtags: tags.length ? tags : ["#shorts"],
            fact_check: (Array.isArray(s.fact_check) ? s.fact_check : []).map(String) };
 }
 async function writeScript(themeText) {
   if (!S.gemini) throw new Error("Add your Gemini API key in Settings first.");
+  // A fast tap during startup must not write from stale cached instructions.
+  await repoConfigReady;
   const avoid = [...new Set([...RC.history, ...jobs.map(j => j.topic || j.title).filter(Boolean)])].slice(-60).join("; ") || "(none yet)";
   const prompt = fillPrompt(RC.prompt, { channel: RC.channel, style: RC.style, theme: themeText, avoid, min_words: RC.minW, max_words: RC.maxW });
   const model = (S.model || DEFAULTS.model).trim();
@@ -952,12 +956,13 @@ if (matchMedia("(pointer: coarse)").matches) $("#v-tiktok-web").hidden = true;
 
 /* ───────────────────────── boot ───────────────────────── */
 async function boot() {
-  RC = { ...RC, ...store.get("rc", {}) };
+  // Cache themes and display settings, but never trust a cached prompt across releases.
+  RC = { ...RC, ...store.get("rc", {}), prompt: FALLBACK_PROMPT };
   renderThemes(); showDraft(); renderList();
   $("#setup-banner").hidden = configured() && !!S.gemini;
   if (!configured()) { setConn(false); $("#empty").hidden = true; return; }
   refresh(true);
-  loadRepoConfig().catch(() => {});
+  repoConfigReady = loadRepoConfig().catch(() => {});
 }
 boot();
 </script>

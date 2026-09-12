@@ -497,7 +497,12 @@ async function writeScript(themeText) {
       body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }],
                              generationConfig: { temperature: RC.temp, responseMimeType: "application/json" } }),
     });
-    if (res.status === 429 || res.status >= 500) { lastErr = new Error(res.status === 429 ? "Gemini free-tier limit hit — wait a minute and try again." : "Gemini is busy — trying again…"); await new Promise(r => setTimeout(r, 4000 * (attempt + 1))); continue; }
+    if (res.status === 429 || res.status >= 500) {
+      lastErr = new Error(res.status === 429 ? "Gemini free-tier limit hit — wait a minute and try again." : "Gemini is busy — trying again…");
+      if (res.status === 429) lastErr.isRateLimit = true;
+      await new Promise(r => setTimeout(r, 4000 * (attempt + 1)));
+      continue;
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       const m = data?.error?.message || `Gemini error ${res.status}`;
@@ -551,8 +556,28 @@ $("#d-yt").addEventListener("change", saveDraft);
 $("#btn-add-scene").onclick = () => { draft.scenes.push({ text: "", visual: "" }); saveDraft(); showDraft(); };
 $("#btn-discard").onclick = () => { draft = null; store.del("draft"); showDraft(); };
 
+let writeCooldownTimer = null;
+function startWriteCooldown(st, btns, seconds) {
+  clearInterval(writeCooldownTimer);
+  btns.forEach(b => b.disabled = true);
+  let left = seconds;
+  const tick = () => {
+    if (left <= 0) {
+      clearInterval(writeCooldownTimer);
+      st.hidden = true;
+      btns.forEach(b => b.disabled = false);
+      return;
+    }
+    st.hidden = false;
+    st.innerHTML = `<span class="err">Gemini free-tier limit hit — you can try again in ${left}s.</span>`;
+    left--;
+  };
+  tick();
+  writeCooldownTimer = setInterval(tick, 1000);
+}
 async function doWrite(themeText) {
   const btns = [$("#btn-write"), $("#btn-rewrite"), $("#btn-approve")];
+  clearInterval(writeCooldownTimer);
   btns.forEach(b => b.disabled = true);
   const st = $("#write-status"); st.hidden = false; st.innerHTML = `<span class="spinner"></span> Writing a script about <b>${esc(themeText)}</b>…`;
   try {
@@ -560,8 +585,17 @@ async function doWrite(themeText) {
     draft = { ...sc, theme: themeText, upload_youtube: S.autoYT };
     store.set("draft", draft); showDraft(); st.hidden = true;
     $("#draft").scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch (e) { st.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-  finally { btns.forEach(b => b.disabled = false); }
+    btns.forEach(b => b.disabled = false);
+  } catch (e) {
+    if (e.isRateLimit) {
+      // Repeatedly tapping right after a 429 just burns more of the same per-minute
+      // quota and keeps tripping it — lock the buttons for a real cooldown instead.
+      startWriteCooldown(st, btns, 65);
+    } else {
+      st.innerHTML = `<span class="err">${esc(e.message)}</span>`;
+      btns.forEach(b => b.disabled = false);
+    }
+  }
 }
 $("#btn-write").onclick = () => {
   if (!configured() || !S.gemini) return openSettings();

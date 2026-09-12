@@ -96,6 +96,7 @@ ul.facts{margin:8px 0 0;padding-left:18px;color:var(--muted);font-size:13px}
 .copyrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .err{color:var(--bad);font-size:13px;white-space:pre-wrap;word-break:break-word}
 .note{font-size:13px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
+.jsonbox{min-height:150px;font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace}
 dialog{border:none;padding:0;background:transparent;color:var(--text);width:min(560px,100%);max-width:100%;max-height:100%}
 dialog::backdrop{background:#000b}
 dialog .card{margin:12px;max-height:calc(100vh - 24px);overflow:auto}
@@ -130,6 +131,19 @@ dialog .card{margin:12px;max-height:calc(100vh - 24px);overflow:auto}
       <div style="height:12px"></div>
       <button class="btn primary big" id="btn-write">Write a script</button>
       <p class="small muted" id="write-status" style="margin:10px 2px 0" hidden></p>
+      <details id="manual-ai">
+        <summary>Use ChatGPT or Claude instead</summary>
+        <p class="small muted" style="margin:8px 2px">Copy the complete prompt, ask either assistant, then paste its JSON response below.</p>
+        <div class="row">
+          <button class="btn sm" id="btn-copy-ai-prompt">Copy AI prompt</button>
+          <a class="btn sm" href="https://chatgpt.com/" target="_blank" rel="noopener">Open ChatGPT</a>
+          <a class="btn sm" href="https://claude.ai/new" target="_blank" rel="noopener">Open Claude</a>
+        </div>
+        <label class="f" for="manual-ai-response">Paste the complete AI response</label>
+        <textarea class="jsonbox" id="manual-ai-response" rows="7" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Paste the JSON response here…"></textarea>
+        <button class="btn primary big" id="btn-import-ai" style="margin-top:10px">Import into Review Script</button>
+        <p class="small muted" id="manual-ai-status" style="margin:8px 2px 0" hidden></p>
+      </details>
     </div>
   </section>
 
@@ -490,12 +504,19 @@ function cleanScript(s) {
            hashtags: tags.length ? tags : ["#shorts"],
            fact_check: (Array.isArray(s.fact_check) ? s.fact_check : []).map(String) };
 }
+function selectedThemeText() {
+  const custom = $("#custom-topic").value.trim();
+  return custom || theme || (RC.themes.length ? RC.themes[Math.floor(Math.random() * RC.themes.length)] : "a compelling short-form video");
+}
+function buildScriptPrompt(themeText) {
+  const avoid = [...new Set([...RC.history, ...jobs.map(j => j.topic || j.title).filter(Boolean)])].slice(-60).join("; ") || "(none yet)";
+  return fillPrompt(RC.prompt, { channel: RC.channel, style: RC.style, theme: themeText, avoid, min_words: RC.minW, max_words: RC.maxW });
+}
 async function writeScript(themeText) {
   if (!S.gemini) throw new Error("Add your Gemini API key in Settings first.");
   // A fast tap during startup must not write from stale cached instructions.
   await repoConfigReady;
-  const avoid = [...new Set([...RC.history, ...jobs.map(j => j.topic || j.title).filter(Boolean)])].slice(-60).join("; ") || "(none yet)";
-  const prompt = fillPrompt(RC.prompt, { channel: RC.channel, style: RC.style, theme: themeText, avoid, min_words: RC.minW, max_words: RC.maxW });
+  const prompt = buildScriptPrompt(themeText);
   const model = (S.model || DEFAULTS.model).trim();
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -563,6 +584,43 @@ $("#d-yt").addEventListener("change", saveDraft);
 $("#btn-add-scene").onclick = () => { draft.scenes.push({ text: "", visual: "" }); saveDraft(); showDraft(); };
 $("#btn-discard").onclick = () => { draft = null; store.del("draft"); showDraft(); };
 
+$("#btn-copy-ai-prompt").onclick = async () => {
+  const status = $("#manual-ai-status");
+  try {
+    await repoConfigReady;
+    const themeText = selectedThemeText();
+    copyText(buildScriptPrompt(themeText));
+    store.set("manualTheme", themeText);
+    status.hidden = false;
+    status.textContent = `Prompt copied for “${themeText}”. Open ChatGPT or Claude and paste it there.`;
+  } catch (e) {
+    status.hidden = false;
+    status.innerHTML = `<span class="err">${esc(e.message)}</span>`;
+  }
+};
+$("#btn-import-ai").onclick = () => {
+  const status = $("#manual-ai-status"), raw = $("#manual-ai-response").value.trim();
+  if (!raw) {
+    status.hidden = false;
+    status.innerHTML = '<span class="err">Paste the complete AI response first.</span>';
+    return;
+  }
+  try {
+    const sc = cleanScript(parseJSON(raw));
+    const themeText = store.get("manualTheme", "") || selectedThemeText();
+    draft = { ...sc, theme: themeText, upload_youtube: S.autoYT };
+    store.set("draft", draft);
+    showDraft();
+    status.hidden = true;
+    $("#manual-ai").open = false;
+    $("#draft").scrollIntoView({ behavior: "smooth", block: "start" });
+    toast("Imported! Review the script before making the video.");
+  } catch (e) {
+    status.hidden = false;
+    status.innerHTML = `<span class="err">Couldn't import that response: ${esc(e.message)}</span>`;
+  }
+};
+
 let writeCooldownTimer = null;
 function startWriteCooldown(st, btns, seconds) {
   clearInterval(writeCooldownTimer);
@@ -606,9 +664,7 @@ async function doWrite(themeText) {
 }
 $("#btn-write").onclick = () => {
   if (!configured() || !S.gemini) return openSettings();
-  const custom = $("#custom-topic").value.trim();
-  const t = custom || theme || (RC.themes.length ? RC.themes[Math.floor(Math.random() * RC.themes.length)] : "surprising science facts");
-  doWrite(t);
+  doWrite(selectedThemeText());
 };
 $("#btn-rewrite").onclick = () => doWrite(draft?.theme || theme || "surprising science facts");
 $("#btn-approve").onclick = async () => {

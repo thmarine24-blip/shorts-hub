@@ -749,6 +749,12 @@ async function refresh(force = false) {
     const [f, r] = await Promise.all([mediaFiles(), gh("/actions/runs?event=workflow_dispatch&per_page=40").then(x => x.workflow_runs || [])]);
     files = f; runs = r; lastRefresh = Date.now();
     setConn(true);
+    const savedDismissed = store.get("dismissed", {});
+    const dismissed = savedDismissed && !Array.isArray(savedDismissed) ? savedDismissed : {};
+    for (const [id, at] of Object.entries(dismissed)) {
+      if (Date.now() - Number(at) > 7 * 24 * 3600 * 1000) delete dismissed[id];
+    }
+    store.set("dismissed", dismissed);
     const ids = new Set();
     for (const p of Object.keys(files)) { const m = /^jobs\/([^/]+)\//.exec(p); if (m) ids.add(m[1]); }
     const runInfo = {};  // id → {render, youtube}
@@ -763,7 +769,8 @@ async function refresh(force = false) {
     for (const id of Object.keys(runInfo)) {
       const rr = runInfo[id].render; if (!rr) continue;
       const recent = Date.now() - new Date(rr.updated_at || rr.created_at).getTime() < 24 * 3600 * 1000;
-      if (statusFromRun(rr) === "running" || (recent && statusFromRun(rr) === "run_failed")) ids.add(id);
+      if (statusFromRun(rr) === "running" ||
+          (recent && statusFromRun(rr) === "run_failed" && !dismissed[id])) ids.add(id);
     }
     const list = [];
     await Promise.all([...ids].map(async id => {
@@ -983,6 +990,8 @@ $("#v-delete").onclick = async () => {
     const paths = Object.keys(files).filter(p => p.startsWith(`jobs/${j.id}/`));
     if (paths.length) await commitMedia(Object.fromEntries(paths.map(p => [p, null])), `hub: delete ${j.title}`);
     store.set("pending", store.get("pending", []).filter(p => p.id !== j.id));
+    const dismissed = store.get("dismissed", {});
+    store.set("dismissed", { ...(dismissed && !Array.isArray(dismissed) ? dismissed : {}), [j.id]: Date.now() });
     jobs = jobs.filter(x => x.id !== j.id); closeViewer(); renderList(); toast("Deleted.");
     refresh(true);
   } catch (e) { toast(e.message, true); }

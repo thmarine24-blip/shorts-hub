@@ -756,7 +756,10 @@ async function refresh(force = false) {
     }
     store.set("dismissed", dismissed);
     const ids = new Set();
-    for (const p of Object.keys(files)) { const m = /^jobs\/([^/]+)\//.exec(p); if (m) ids.add(m[1]); }
+    for (const p of Object.keys(files)) {
+      const m = /^jobs\/([^/]+)\//.exec(p);
+      if (m && !dismissed[m[1]]) ids.add(m[1]);
+    }
     const runInfo = {};  // id → {render, youtube}
     for (const run of runs) {
       const m = /^(render|youtube) (\S+)(?: · (.*))?$/.exec(run.display_title || "");

@@ -40,8 +40,8 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:0 0 auto;padding:8px 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-size:14px;white-space:nowrap}
 .chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
-input[type=text],input[type=password],textarea{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none}
-input:focus,textarea:focus{border-color:#555d72}
+input[type=text],input[type=password],textarea,select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:11px 12px;outline:none}
+input:focus,textarea:focus,select:focus{border-color:#555d72}
 textarea{resize:vertical;min-height:64px}
 label.f{display:block;font-size:12px;color:var(--muted);margin:12px 2px 6px;font-weight:600}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 16px;border-radius:13px;border:1px solid var(--line);background:var(--panel2);cursor:pointer;font-weight:650;text-decoration:none;color:var(--text)}
@@ -128,6 +128,20 @@ dialog .card{margin:12px;max-height:calc(100vh - 24px);overflow:auto}
     <div class="card">
       <div class="chips" id="theme-chips" role="group" aria-label="Theme"></div>
       <input type="text" id="custom-topic" placeholder="…or type any topic" autocomplete="off">
+      <div class="row">
+        <div style="flex:1 1 150px">
+          <label class="f" for="video-length">Video length</label>
+          <select id="video-length">
+            <option value="45">About 45 seconds</option>
+            <option value="60" selected>About 60 seconds</option>
+            <option value="75">About 75 seconds</option>
+          </select>
+        </div>
+        <div style="flex:2 1 260px">
+          <label class="f" for="map-location">Opening map flyover (optional)</label>
+          <input type="text" id="map-location" placeholder="e.g. Chrysler Building, New York" autocomplete="off">
+        </div>
+      </div>
       <div style="height:12px"></div>
       <button class="btn primary big" id="btn-write">Write a script</button>
       <p class="small muted" id="write-status" style="margin:10px 2px 0" hidden></p>
@@ -155,6 +169,8 @@ dialog .card{margin:12px;max-height:calc(100vh - 24px);overflow:auto}
       <input type="text" id="d-title" maxlength="100">
       <label class="f" for="d-hook">On-screen hook (first 3 seconds)</label>
       <input type="text" id="d-hook" maxlength="40">
+      <label class="f" for="d-map-location">Opening map flyover (optional)</label>
+      <input type="text" id="d-map-location" placeholder="Specific landmark or address">
       <label class="f">Narration — one card per scene</label>
       <div id="d-scenes"></div>
       <button class="btn sm" id="btn-add-scene" style="margin-top:10px">+ Add scene</button>
@@ -438,9 +454,9 @@ INTENT MATCHING IS MANDATORY. Make the requested video; do not automatically tur
 If the topic names an experience, action, mood, aesthetic, or entertainment concept, create that experience directly with vivid, sensory, action-led lines. For example, "ASMR fruit cutting" means the cutting experience itself—not brain science, history, popularity, benefits, statistics, or why people enjoy it.
 Match tips and how-to topics with useful steps; rankings with a clear list; stories with a narrative; and opinions with an explicitly subjective argument. Use facts, trivia, history, science, myths, or an explainer ONLY when the topic explicitly requests that treatment.
 Pick ONE specific, sharp angle. The title and hook must sell the requested experience or format, not reframe it as an explainer.
-Use {min_words}-{max_words} words in 5-8 scenes. Start with a bold hook under 14 words, build momentum, and end with a short call to action.
+Use {min_words}-{max_words} words in frequent short scenes. Start with a bold hook under 14 words, build momentum, and end with a short call to action.
 Do not invent factual claims. Make opinions clearly subjective. Each scene gets a concrete 2-4 word stock-footage "visual" query.
-Return ONLY JSON: {{"topic":"","title":"","hook":"2-5 WORDS","scenes":[{{"text":"","visual":""}}],"description":"","hashtags":[],"fact_check":[]}}`;
+Return ONLY JSON: {{"topic":"","map_location":"specific real place or empty string","title":"","hook":"2-5 WORDS","scenes":[{{"text":"","visual":""}}],"description":"","hashtags":[],"fact_check":[]}}`;
 let RC = { themes: [], prompt: FALLBACK_PROMPT, channel: "Fact Drop", style: "curious, punchy", minW: 95, maxW: 130, temp: 0.9, history: [] };
 let repoConfigReady = Promise.resolve();
 function tomlValue(toml, section, key) {
@@ -502,7 +518,8 @@ function cleanScript(s) {
   return { topic: String(s.topic || s.title || "").trim(), title: String(s.title || scenes[0].text).trim().slice(0, 100),
            hook: String(s.hook || "").trim(), scenes, description: String(s.description || "").trim(),
            hashtags: tags.length ? tags : ["#shorts"],
-           fact_check: (Array.isArray(s.fact_check) ? s.fact_check : []).map(String) };
+           fact_check: (Array.isArray(s.fact_check) ? s.fact_check : []).map(String),
+           map_location: String(s.map_location || "").trim() };
 }
 function selectedThemeText() {
   const custom = $("#custom-topic").value.trim();
@@ -510,7 +527,14 @@ function selectedThemeText() {
 }
 function buildScriptPrompt(themeText) {
   const avoid = [...new Set([...RC.history, ...jobs.map(j => j.topic || j.title).filter(Boolean)])].slice(-60).join("; ") || "(none yet)";
-  return fillPrompt(RC.prompt, { channel: RC.channel, style: RC.style, theme: themeText, avoid, min_words: RC.minW, max_words: RC.maxW });
+  const seconds = Number($("#video-length").value || 60);
+  const profile = seconds <= 45 ? [105, 125, "5-7"] : seconds >= 75 ? [175, 200, "9-11"] : [140, 165, "7-10"];
+  const location = $("#map-location").value.trim();
+  const base = fillPrompt(RC.prompt, { channel: RC.channel, style: RC.style, theme: themeText, avoid,
+                                      min_words: profile[0], max_words: profile[1] });
+  return `${base}\n\nThis request targets about ${seconds} seconds and ${profile[2]} scenes. ` +
+    `Set map_location to ${location ? JSON.stringify(location) : 'an empty string'}. ` +
+    `When map_location is present, make scene one work over a fast map flyover into that exact place.`;
 }
 async function writeScript(themeText) {
   if (!S.gemini) throw new Error("Add your Gemini API key in Settings first.");
@@ -552,6 +576,7 @@ function showDraft() {
   const has = !!draft; $("#draft").hidden = !has;
   if (!has) return;
   $("#d-title").value = draft.title; $("#d-hook").value = draft.hook;
+  $("#d-map-location").value = draft.map_location || "";
   $("#d-desc").value = draft.description; $("#d-tags").value = draft.hashtags.join(" ");
   $("#d-yt").checked = draft.upload_youtube ?? S.autoYT;
   $("#d-theme").textContent = draft.theme ? "· " + draft.theme : "";
@@ -575,11 +600,12 @@ function updateStats() { const w = wordCount(draft.scenes); $("#d-words").textCo
 function saveDraft() {
   if (!draft) return;
   draft.title = $("#d-title").value; draft.hook = $("#d-hook").value; draft.description = $("#d-desc").value;
+  draft.map_location = $("#d-map-location").value.trim();
   draft.hashtags = $("#d-tags").value.split(/[\s,]+/).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t);
   draft.upload_youtube = $("#d-yt").checked;
   store.set("draft", draft); updateStats();
 }
-["#d-title", "#d-hook", "#d-desc", "#d-tags"].forEach(s => $(s).addEventListener("input", saveDraft));
+["#d-title", "#d-hook", "#d-map-location", "#d-desc", "#d-tags"].forEach(s => $(s).addEventListener("input", saveDraft));
 $("#d-yt").addEventListener("change", saveDraft);
 $("#btn-add-scene").onclick = () => { draft.scenes.push({ text: "", visual: "" }); saveDraft(); showDraft(); };
 $("#btn-discard").onclick = () => { draft = null; store.del("draft"); showDraft(); };
@@ -608,7 +634,8 @@ $("#btn-import-ai").onclick = () => {
   try {
     const sc = cleanScript(parseJSON(raw));
     const themeText = store.get("manualTheme", "") || selectedThemeText();
-    draft = { ...sc, theme: themeText, upload_youtube: S.autoYT };
+    draft = { ...sc, map_location: sc.map_location || $("#map-location").value.trim(),
+              theme: themeText, upload_youtube: S.autoYT };
     store.set("draft", draft);
     showDraft();
     status.hidden = true;
@@ -647,7 +674,8 @@ async function doWrite(themeText) {
   const st = $("#write-status"); st.hidden = false; st.innerHTML = `<span class="spinner"></span> Writing a script about <b>${esc(themeText)}</b>…`;
   try {
     const sc = await writeScript(themeText);
-    draft = { ...sc, theme: themeText, upload_youtube: S.autoYT };
+    draft = { ...sc, map_location: sc.map_location || $("#map-location").value.trim(),
+              theme: themeText, upload_youtube: S.autoYT };
     store.set("draft", draft); showDraft(); st.hidden = true;
     $("#draft").scrollIntoView({ behavior: "smooth", block: "start" });
     btns.forEach(b => b.disabled = false);
@@ -685,7 +713,8 @@ async function startRender(sc, uploadYT) {
   const d = new Date().toISOString().replace(/[-:]/g, "");
   const id = `${d.slice(0, 8)}-${d.slice(9, 15)}-${slugify(sc.topic || sc.title)}`;
   const script = { topic: sc.topic, title: sc.title.trim(), hook: sc.hook.trim(), scenes: sc.scenes,
-                   description: sc.description, hashtags: sc.hashtags, fact_check: sc.fact_check };
+                   description: sc.description, hashtags: sc.hashtags, fact_check: sc.fact_check,
+                   map_location: sc.map_location || "" };
   await dispatch("render.yml", { job_id: id, title: script.title.slice(0, 80), script_b64: b64utf8(JSON.stringify(script)),
                                  upload_youtube: uploadYT ? "true" : "false" });
   const pending = store.get("pending", []);

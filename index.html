@@ -516,7 +516,15 @@ function parseJSON(text) {
 function cleanScript(s) {
   if (!s || !Array.isArray(s.scenes)) throw new Error("The AI reply had no scenes. Tap Rewrite.");
   const scenes = s.scenes.map(x => typeof x === "string" ? { text: x } : x)
-    .map(x => ({ text: String(x.text || "").trim(), visual: String(x.visual || "").trim() }))
+    .map(x => {
+      const scene = { text: String(x.text || "").trim(), visual: String(x.visual || "").trim() };
+      const visualType = String(x.visual_type || "").trim().toLowerCase().replace(/-/g, "_");
+      if (["animated_diagram", "diagram", "mechanism"].includes(visualType)) {
+        scene.visual_type = "animated_diagram";
+        if (x.diagram || x.diagram_kind) scene.diagram = String(x.diagram || x.diagram_kind).trim();
+      }
+      return scene;
+    })
     .filter(x => x.text);
   if (!scenes.length) throw new Error("The script came back empty. Tap Rewrite.");
   const tags = (Array.isArray(s.hashtags) ? s.hashtags : String(s.hashtags || "").split(/[\s,]+/))
@@ -589,8 +597,10 @@ function showDraft() {
   const box = $("#d-scenes"); box.innerHTML = "";
   draft.scenes.forEach((sc, i) => {
     const el = document.createElement("div"); el.className = "scene";
+    const isDiagram = sc.visual_type === "animated_diagram";
+    const visualPlaceholder = isDiagram ? `animated ${sc.diagram || "flow"} diagram` : "stock footage search words";
     el.innerHTML = `<div class="n"><span>SCENE ${i + 1}</span><button class="x" title="Remove scene" aria-label="Remove scene">✕</button></div>
-      <textarea rows="2"></textarea><div class="vis">🎞<input type="text" placeholder="stock footage search words"></div>`;
+      <textarea rows="2"></textarea><div class="vis">${isDiagram ? "◆" : "🎞"}<input type="text" placeholder="${esc(visualPlaceholder)}"></div>`;
     const ta = $("textarea", el), vi = $("input", el);
     ta.value = sc.text; vi.value = sc.visual;
     const fit = () => { ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; };
@@ -703,7 +713,10 @@ $("#btn-write").onclick = () => {
 $("#btn-rewrite").onclick = () => doWrite(draft?.theme || theme || "surprising science facts");
 $("#btn-approve").onclick = async () => {
   saveDraft();
-  const sc = { ...draft, scenes: draft.scenes.filter(s => s.text.trim()).map(s => ({ text: s.text.trim(), visual: s.visual.trim() || draft.topic || draft.title })) };
+  const sc = { ...draft, scenes: draft.scenes.filter(s => s.text.trim()).map(s => ({
+    text: s.text.trim(), visual: s.visual.trim() || draft.topic || draft.title,
+    ...(s.visual_type ? { visual_type: s.visual_type } : {}), ...(s.diagram ? { diagram: s.diagram } : {})
+  })) };
   if (!sc.scenes.length) return toast("The script is empty.", true);
   if (!sc.title.trim()) return toast("Give it a title first.", true);
   const btn = $("#btn-approve"); btn.disabled = true; btn.textContent = "Starting…";

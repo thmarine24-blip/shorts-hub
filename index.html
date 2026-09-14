@@ -456,7 +456,8 @@ Match tips and how-to topics with useful steps; rankings with a clear list; stor
 Pick ONE specific, sharp angle. The title and hook must sell the requested experience or format, not reframe it as an explainer.
 Use {min_words}-{max_words} words in frequent short scenes. Start with a bold hook under 14 words, build momentum, and end with a short call to action.
 Do not invent factual claims. Make opinions clearly subjective. Each scene gets a concrete 2-4 word stock-footage "visual" query.
-Return ONLY JSON: {{"topic":"","map_location":"specific real place or empty string","title":"","hook":"2-5 WORDS","scenes":[{{"text":"","visual":""}}],"description":"","hashtags":[],"fact_check":[]}}`;
+For mechanism scenes that need motion, add "visual_type":"animated_diagram" and one supported "diagram": "tesla_valve", "gears", "piston", "circuit", or "fluid_flow". Otherwise omit both fields.
+Return ONLY JSON: {{"topic":"","map_location":"specific real place or empty string","title":"","hook":"2-5 WORDS","scenes":[{{"text":"","visual":"","visual_type":"optional animated_diagram","diagram":"optional supported kind"}}],"description":"","hashtags":[],"fact_check":[]}}`;
 let RC = { themes: [], prompt: FALLBACK_PROMPT, channel: "Fact Drop", style: "curious, punchy", minW: 95, maxW: 130, temp: 0.9, history: [] };
 let repoConfigReady = Promise.resolve();
 function tomlValue(toml, section, key) {

@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const core=require('../js/studio-core.js');
+const imported=core.parse('```json\n{"title":"A , ] string", "scenes":[{"text":"One two three.","visual":"valve","custom":true,},],"extra":42,}\n```');
+assert.equal(imported.title,'A , ] string');assert.equal(imported.extra,42);
+const plan=core.beats(imported);assert(plan.scenes[0].visual_beats.length>1);assert.equal(plan.scenes[0].custom,true);
+plan.scenes[0].visual_beats[0].candidates=[{id:'test'}];assert(!core.compact(plan).scenes[0].visual_beats[0].candidates);
+assert.equal(core.state({status:'failed',youtube:{id:'abc'}},false,null),'done');
+assert.equal(core.state({status:'failed'},true,null),'done');
+assert.equal(core.state({status:'rendering'},false,{status:'completed',conclusion:'failure'}),'failed');
+assert.equal(core.state({status:'cancelled'},false,null),'failed');
+assert.equal(core.estimate({scenes:[{visual_beats:[{generate:'video',duration:10},{generate:'image',reference_url:'https://example.org/a.png'}]}]}),.78);
+assert.throws(()=>core.parse('{"scenes": [ bad ]}'));
+console.log('PASS: imports, metadata, planning, cost estimate, state reconciliation');

@@ -2,15 +2,27 @@
 (function(root){
   'use strict';
   const clamp=(v,d=0,min=0,max=1)=>Number.isFinite(Number(v))?Math.max(min,Math.min(max,Number(v))):d;
+  // Must stay in step with SHOT_SECONDS in pipeline/visual_plan.py. The hub plans the beats
+  // and the pipeline honours whatever it is sent, so a shorter value here means more shots
+  // competing for the one search query a scene has, and shots that cannot be filled.
+  const SHOT_SECONDS=4;
+  // Shot-card labels: clause boundaries, not blind word slices (see narration_slices in
+  // pipeline/visual_plan.py). Written without lookbehind so older phone browsers are fine.
+  function narrationSlices(text,count){
+    const parts=(String(text).match(/[^.!?,;:]+[.!?,;:]*/g)||[]).map(p=>p.trim()).filter(Boolean);
+    const units=parts.length>=count?parts:String(text).split(/\s+/);
+    return Array.from({length:count},(_,j)=>units.slice(Math.round(j*units.length/count),Math.round((j+1)*units.length/count)).join(' ').trim());
+  }
   function beats(script){
     const total=script.scenes.reduce((n,s)=>n+s.text.split(/\s+/).length,0)||1;
     script.scenes.forEach((s,i)=>{
       if(!s.visual_beats?.length){
         const duration=(script.target_seconds||60)*s.text.split(/\s+/).length/total;
-        const count=Math.max(1,Math.min(12,Math.round(duration/3.2)));
+        const count=Math.max(1,Math.min(12,Math.round(duration/SHOT_SECONDS)));
         s.visual_beats=Array.from({length:count},()=>({visual:s.visual,duration:duration/count,motion:'auto',focal_point:{x:.5,y:.5},locked:false}));
       }
-      s.visual_beats.forEach((b,j)=>{b.id=`s${i+1}-b${j+1}`;b.visual||=s.visual;b.duration=clamp(b.duration,3.2,.5,15);const words=s.text.split(/\s+/),n=s.visual_beats.length;b.narration??=words.slice(Math.round(j*words.length/n),Math.round((j+1)*words.length/n)).join(' ');});
+      const labels=narrationSlices(s.text,s.visual_beats.length);
+      s.visual_beats.forEach((b,j)=>{b.id=`s${i+1}-b${j+1}`;b.visual||=s.visual;b.duration=clamp(b.duration,SHOT_SECONDS,.5,15);b.narration??=labels[j];});
     });return script;
   }
   function estimate(script){return Math.round(script.scenes.flatMap(s=>s.visual_beats||[]).reduce((n,b)=>n+(b.locked?0:b.generate==='image'?((b.reference_url||b.reference_id)? .08 : .02):b.generate==='video'?(b.duration>5? .70 : .35):0),0)*100)/100;}

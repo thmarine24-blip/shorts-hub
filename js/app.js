@@ -235,7 +235,7 @@ function buildScriptPrompt(themeText) {
                                       min_words: profile[0], max_words: profile[1] });
   return `${base}\n\nProduction mode: ${document.querySelector('#production-mode')?.value || 'stock'}. Series style: ${document.querySelector('#style-reference')?.value || 'consistent cinematic visual style'}. For illustrated or character stories, describe original narrative images rather than educational stock. Add visual_beats to each scene, with 2–4 second duration, concrete visual search, image_prompt, video_prompt and optional sound_cue. Do not enable paid generation yourself. No diagrams unless explicitly requested.\nThis request targets about ${seconds} seconds and ${profile[2]} scenes. ` +
     `Set map_location to ${location ? JSON.stringify(location) : 'an empty string'}. ` +
-    `When map_location is present, make scene one work over a fast map flyover into that exact place.`;
+    `When map_location is present, make scene one work over a fast map flyover into that exact place.` + StudioCore.castPrompt(store.get('creative',{}));
 }
 async function writeScript(themeText) {
   if (!S.gemini) throw new Error("Add your Gemini API key in Settings first.");
@@ -420,6 +420,9 @@ $("#btn-approve").onclick = async () => {
   finally { btn.disabled = false; btn.textContent = "Make my video →"; }
 };
 async function startRender(sc, uploadYT) {
+  StudioCore.applyCast(sc);
+  if(sc.cast_errors.length)throw new Error(sc.cast_errors.join(' '));
+  if(sc.scenes.some(s=>s.visual_beats.some(b=>b.cast_required))&&sc.ai?.enabled!==true)throw new Error('Your cast needs generated scenes. Enable paid visuals in Creative settings, or upload and lock finished scene artwork.');
   const d = new Date().toISOString().replace(/[-:]/g, "");
   const id = `${d.slice(0, 8)}-${d.slice(9, 15)}-${slugify(sc.topic || sc.title)}`;
   const script = { ...StudioCore.compact(sc), topic: sc.topic, title: sc.title.trim(), hook: sc.hook.trim(), scenes: sc.scenes,

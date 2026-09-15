@@ -2,7 +2,7 @@
 let library=[],planPoll=null,planId=null,activePlanRun=null,assetTarget=null;
 const creativeFields={production_mode:'#production-mode',target_seconds:'#video-length',voice:'#studio-voice',caption_preset:'#caption-preset',music_mood:'#music-mood',style_reference:'#style-reference'};
 const modeNotes={stock:'Real footage, a clear story, and a clean edit. Free sources by default.',illustrated:'Consistent artwork with gentle motion. Add your illustrations or enable generated images for selected shots.',character:'Build an original cast with reference images. Animate selected shots when paid visuals are enabled.'};
-function creative(){const prefs={schema_version:2,disabled_sources:store.get('creative',{}).disabled_sources||[]};for(const [k,id] of Object.entries(creativeFields))prefs[k]=k==='target_seconds'?Number($(id).value):$(id).value;prefs.ai={enabled:$('#ai-enabled').checked,budget:StudioCore.clamp($('#ai-budget').value,0,0,25),approved_cost:0};return prefs;}
+function creative(){const saved=store.get('creative',{});const prefs={schema_version:2,cast:draft?.cast??saved.cast??[],cast_default_id:draft?.cast_default_id??saved.cast_default_id??'',disabled_sources:saved.disabled_sources||[]};for(const [k,id] of Object.entries(creativeFields))prefs[k]=k==='target_seconds'?Number($(id).value):$(id).value;prefs.ai={enabled:$('#ai-enabled').checked,budget:StudioCore.clamp($('#ai-budget').value,0,0,25),approved_cost:0};return prefs;}
 function saveCreative(){const value=creative();store.set('creative',value);if(draft){Object.assign(draft,value);store.set('draft',draft);}$('#mode-note').textContent=modeNotes[value.production_mode];}
 const preferences={production_mode:'stock',target_seconds:60,voice:'en-US-AndrewNeural',caption_preset:'documentary',music_mood:'none',style_reference:'',...store.get('creative',{})};
 const modeProfiles=store.get('mode-profiles',{});
@@ -64,7 +64,7 @@ function renderLibrary(){
 }
 function revokeMedia(box){$$('[data-object-url]',box).forEach(el=>URL.revokeObjectURL(el.dataset.objectUrl));}
 $('#library-search').oninput=renderLibrary;
-function openAsset(asset=null,target=null){assetTarget=target;$('#asset-id').value=asset?.id||'';$('#asset-file').value='';$('#asset-url').value=asset?.url||'';$('#asset-title').value=asset?.title||'';$('#asset-kind').value=asset?.kind||'video';$('#asset-tags').value=(asset?.tags||[]).join(', ');$('#asset-creator').value=asset?.creator||'';$('#asset-license').value=asset?.license||'';$('#asset-source').value=asset?.page_url||'';$('#asset-status').textContent='Uploads are stored as release assets. Your library keeps only lightweight metadata.';$('#asset-dialog').showModal();}
+function openAsset(asset=null,target=null){assetTarget=target;$('#asset-id').value=asset?.id||'';$('#asset-file').value='';$('#asset-url').value=asset?.url||'';$('#asset-title').value=asset?.title||'';$('#asset-kind').value=asset?.kind||'video';$('#asset-tags').value=(asset?.tags||[]).join(', ');$('#asset-creator').value=asset?.creator||'';$('#asset-license').value=asset?.license||'';$('#asset-source').value=asset?.page_url||'';if($('#asset-reference-only'))$('#asset-reference-only').checked=asset?.reference_only===true;$('#asset-status').textContent='Uploads are stored as release assets. Your library keeps only lightweight metadata.';$('#asset-dialog').showModal();}
 $('#add-asset').onclick=()=>openAsset();
 async function saveLibraryAsset(asset,remove=false){
   await ensureMedia();
@@ -95,6 +95,7 @@ $('#save-asset').onclick=async()=>{
     const id=$('#asset-id').value||crypto.randomUUID();const prior=library.find(a=>a.id===id)||{};
     let asset={...prior,id,title:$('#asset-title').value.trim(),kind:$('#asset-kind').value,tags:$('#asset-tags').value.split(',').map(x=>x.trim()).filter(Boolean),creator:$('#asset-creator').value.trim(),license:$('#asset-license').value.trim(),page_url:$('#asset-source').value.trim()};
     const file=$('#asset-file').files[0];$('#asset-status').textContent=file?'Uploading media…':'Saving…';
+    asset.reference_only=$('#asset-reference-only')?.checked===true;
     if(file)Object.assign(asset,await uploadAsset(file));else{
       const url=new URL($('#asset-url').value);if(url.protocol!=='https:'||url.username||url.password)throw new Error('Use a direct HTTPS media URL.');asset.url=url.href;asset.extension='.'+url.pathname.split('.').pop().toLowerCase();
       if(prior.url!==asset.url)delete asset.release_asset_id;
@@ -114,6 +115,8 @@ $('#save-asset').onclick=async()=>{
 
 async function requestPlan(){
   if(!draft)return;saveDraft();StudioCore.beats(draft);store.set('draft',draft);
+  StudioCore.applyCast(draft);store.set('draft',draft);
+  if(draft.cast_errors.length){toast(draft.cast_errors.join(' '),true);return;}
   $('#draft').hidden=true;$('#visual-review').hidden=false;$('#render-plan').disabled=true;$('#plan-status').hidden=false;$('#cancel-plan').hidden=false;
   renderShots();$('#visual-review').scrollIntoView({behavior:'smooth'});
   if(draft.scenes.every(s=>s.visual_beats.every(b=>b.selected))){$('#plan-status').textContent='Your selected shots are saved. Replace a shot or render when ready.';$('#render-plan').disabled=false;$('#cancel-plan').hidden=true;return;}
@@ -153,17 +156,18 @@ $('#btn-plan').onclick=requestPlan;
 $('#back-script').onclick=()=>{$('#visual-review').hidden=true;$('#draft').hidden=false;showDraft();};
 $('#cancel-plan').onclick=async()=>{clearTimeout(planPoll);if(activePlanRun?.status!=='completed'&&activePlanRun?.id){try{await gh(`/actions/runs/${activePlanRun.id}/cancel`,{method:'POST'});}catch(e){toast(e.message,true);return;}}planId=null;store.del('plan');$('#plan-status').textContent='Search cancelled. Your current shots are saved.';$('#render-plan').disabled=false;};
 function renderShots(){
-  if(!draft)return;StudioCore.beats(draft);const grid=$('#shot-grid');revokeMedia(grid);grid.replaceChildren();
+  if(!draft)return;StudioCore.applyCast(draft);const grid=$('#shot-grid');revokeMedia(grid);grid.replaceChildren();
   draft.scenes.forEach((scene,i)=>scene.visual_beats.forEach((b,j)=>{
     const card=document.createElement('article');card.className='card shot';
     card.innerHTML=`<div class="shot-preview"></div><div class="shot-head"><span>SHOT ${i+1}.${j+1}</span><span>${b.duration.toFixed(1)}s estimated</span></div><p>${esc(scene.text)}</p><div class="shot-source">${b.selected?esc([b.selected.title,b.selected.creator,b.selected.license].filter(Boolean).join(' · ')):'Automatic selection'}</div><p class="warning">${esc(b.warning||'')}</p><div class="row"><button class="btn sm replace">Replace</button><button class="btn sm upload">Upload</button><button class="btn sm lock" aria-pressed="${!!b.locked}">${b.locked?'✓ Locked':'Lock shot'}</button><button class="btn sm search">Search again</button></div><details><summary>Shot direction</summary><label class="f">Find footage</label><input class="query" type="text" value="${esc(b.visual)}" aria-label="Footage search"><div class="row"><div style="flex:1"><label class="f">Start at (seconds)</label><input class="trim" type="number" min="0" max="7200" value="${b.clip_start||0}" aria-label="Clip start time"></div><div style="flex:1"><label class="f">Speed</label><input class="speed" type="number" min="0.5" max="2" step="0.1" value="${b.speed||1}" aria-label="Playback speed"></div></div><label class="f">Horizontal subject position</label><input class="focal" type="range" min="0" max="1" step="0.01" value="${b.focal_point?.x??.5}" aria-label="Horizontal crop focal point"><label class="f">Vertical subject position</label><input class="focal-y" type="range" min="0" max="1" step="0.01" value="${b.focal_point?.y??.5}" aria-label="Vertical crop focal point"><label class="f">Motion treatment</label><select class="motion" aria-label="Motion treatment"><option value="auto">Automatic</option><option value="none">Natural footage</option><option value="zoom">Slow zoom</option><option value="punch">Punch in</option><option value="pan">Pan</option><option value="flicker">Light flicker</option><option value="fog">Mist treatment</option><option value="shake">Camera shake</option></select><label class="f">Sound cue from library</label><input class="sound" type="text" aria-label="Sound cue" value="${esc(b.sound_cue||'')}" placeholder="water, impact, horror drone…"><label class="f">Optional generated visual</label><select class="generate" aria-label="Generate image or video"><option value="">Use selected footage</option><option value="image">Generate illustration · allowance $0.02</option><option value="video">Animate reference · allowance from $0.35</option></select><label class="f">Generation direction</label><textarea class="ai-prompt" aria-label="Generation prompt">${esc(b.image_prompt||b.video_prompt||b.visual)}</textarea><label class="f">Reference image URL (for animation)</label><input class="reference" type="text" aria-label="Reference image URL" value="${esc(b.reference_url||'')}" placeholder="https://…/character.jpg"></details>`;
-    const preview=$('.shot-preview',card);if(b.selected)preview.append(mediaElement(b.selected,true));else preview.textContent='Footage will appear here';
+    const preview=$('.shot-preview',card);if(b.cast_required)preview.textContent='Illustrated scene will be generated';else if(b.selected)preview.append(mediaElement(b.selected,true));else preview.textContent='Footage will appear here';
     $('.shot-head + p',card).textContent=b.narration||scene.text;
     const extra=document.createElement('div');extra.innerHTML='<label class="f">Transition</label><select class="transition" aria-label="Shot transition"><option value="">Clean cut</option><option value="fade">Soft fade</option><option value="blur">Brief blur</option></select><label class="f">Transparent foreground PNG (layered parallax)</label><input class="foreground" type="url" aria-label="Transparent foreground URL" placeholder="https://…/foreground.png"><label class="f">End reference image (optional)</label><input class="end-reference" type="url" aria-label="End reference image URL"><label class="f">Reference asset ID (from your library)</label><input class="reference-id" aria-label="Reference asset ID">';
     $('details',card).append(extra);$('.motion',card).add(new Option('Layered parallax · needs foreground','parallax'));
-    for(const [selector,key]of [['.transition','transition'],['.foreground','foreground_url'],['.end-reference','end_image_url'],['.reference-id','reference_id']]){const input=$(selector,card);input.value=b[key]||'';input.onchange=()=>{b[key]=input.value;store.set('draft',draft);updateEstimate();};}
+    for(const [selector,key]of [['.transition','transition'],['.foreground','foreground_url'],['.end-reference','end_image_url'],['.reference-id','reference_id']]){const input=$(selector,card);input.value=b[key]||'';input.onchange=()=>{b[key]=input.value;if(key==='reference_id'){delete b.auto_reference_id;delete b.reference_asset;delete b.reference_url;}store.set('draft',draft);updateEstimate();};}
     if(/^https:\/\//i.test(b.selected?.page_url||'')){const link=document.createElement('a');link.href=b.selected.page_url;link.textContent='View source & license';link.target='_blank';link.rel='noopener';$('.shot-source',card).append(document.createElement('br'),link);}
     $('.motion',card).value=b.motion||'auto';$('.generate',card).value=b.generate||'';
+    $('.generate',card).options[1].textContent=(b.reference_id||b.reference_url)?'Generate character scene · allowance $0.08':'Generate illustration · allowance $0.02';
     const persist=()=>{store.set('draft',draft);updateEstimate();};
     $('.replace',card).onclick=()=>showCandidates(b);$('.upload',card).onclick=()=>openAsset(null,b);
     $('.lock',card).onclick=()=>{if(!b.selected){toast('Choose footage before locking.',true);return;}b.locked=!b.locked;persist();renderShots();};
@@ -174,12 +178,13 @@ function renderShots(){
     $('.focal',card).oninput=e=>{b.focal_point={...(b.focal_point||{}),x:Number(e.target.value)};preview.firstChild?.style&&(preview.firstChild.style.objectPosition=`${b.focal_point.x*100}% ${(b.focal_point.y??.5)*100}%`);persist();};
     $('.focal-y',card).oninput=e=>{b.focal_point={...(b.focal_point||{}),y:Number(e.target.value)};persist();};
     $('.motion',card).onchange=e=>{b.motion=e.target.value;persist();};$('.sound',card).onchange=e=>{b.sound_cue=e.target.value.trim();persist();};
-    $('.generate',card).onchange=e=>{b.generate=e.target.value;persist();};$('.ai-prompt',card).onchange=e=>{b.image_prompt=e.target.value;b.video_prompt=e.target.value;persist();};$('.reference',card).onchange=e=>{b.reference_url=e.target.value.trim();persist();};
+    $('.generate',card).onchange=e=>{delete b.auto_generate;b.generate=e.target.value;persist();};$('.ai-prompt',card).onchange=e=>{b.image_prompt=e.target.value;b.video_prompt=e.target.value;persist();};$('.reference',card).onchange=e=>{b.reference_url=e.target.value.trim();delete b.auto_reference_id;delete b.reference_id;delete b.reference_asset;persist();};
     $('.generate',card).addEventListener('change',()=>{if(b.generate && b.locked){b.locked=false;store.set('draft',draft);toast('Shot unlocked so your generated visual can replace it.');renderShots();}});
+    if(window.addCastShotControls)window.addCastShotControls(card,b,scene);
     grid.append(card);
   }));updateEstimate();
 }
-function updateEstimate(){if(!draft)return;const cost=StudioCore.estimate(draft);$('#render-estimate').textContent=draft.ai?.enabled?`Generation allowance: $${cost.toFixed(2)} · Your cap: $${Number(draft.ai.budget||0).toFixed(2)}`:'Free footage · Paid generation is off';}
+function updateEstimate(){if(!draft)return;const cost=StudioCore.estimate(draft);$('#render-estimate').textContent=draft.ai?.enabled?`Generation allowance: $${cost.toFixed(2)} · Your cap: $${Number(draft.ai.budget||0).toFixed(2)}`:draft.scenes.some(s=>s.visual_beats?.some(b=>b.cast_required))?`Character story · Enable paid visuals · Allowance $${cost.toFixed(2)}`:'Free footage · Paid generation is off';}
 async function showCandidates(beat){
   const box=$('#candidate-grid');revokeMedia(box);box.replaceChildren();$('#candidate-dialog').showModal();
   if(!library.length)try{library=(await mediaJSON('library/index.json',{assets:[]})).assets;}catch{}

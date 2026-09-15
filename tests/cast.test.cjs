@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');
+const core=require('../js/studio-core.js');
+const cast=[{id:'elias',name:'Elias Vale',aliases:['Elias'],description:'Teal glasses'},{id:'mara',name:'Mara Velez',aliases:['Mara']}];
+const base=()=>({production_mode:'illustrated',cast,cast_default_id:'elias',ai:{enabled:false},scenes:[{text:'I heard a sound.',visual:'dark attic',visual_beats:[{visual:'dark attic',duration:4}]}]});
+let s=core.applyCast(base()),b=s.scenes[0].visual_beats[0];
+assert.equal(b.reference_id,'elias');assert.equal(b.generate,'image');assert.equal(s.ai.enabled,false);assert.equal(core.estimate(s),.08);
+assert(b.cast_direction.includes('Teal glasses'));
+assert.deepEqual(core.applyCast(structuredClone(s)),s,'assignment is stable across reviews');
+b.cast_ids=['mara'];core.applyCast(s);assert.equal(b.reference_id,'mara');
+b.cast_ids=[];core.applyCast(s);assert(!b.reference_id);assert.equal(b.generate,'image');assert.equal(core.estimate(s),.02);
+b.cast_ids=['elias','mara'];core.applyCast(s);assert.equal(s.cast_errors.length,1);
+b.reference_id='duo';core.applyCast(s);assert.equal(s.cast_errors.length,0);assert.equal(b.reference_id,'duo');
+b.locked=true;core.applyCast(s);assert(!b.cast_required);assert.equal(b.reference_id,'duo');
+s=base();s.scenes[0].text='Mara opens the door.';core.applyCast(s);assert.equal(s.scenes[0].visual_beats[0].reference_id,'mara');
+s=base();s.production_mode='stock';core.applyCast(s);assert(!s.scenes[0].visual_beats[0].generate);
+s=base();s.scenes[0].cast_ids=[];core.applyCast(s);assert(!s.scenes[0].visual_beats[0].reference_id);
+assert(core.castPrompt(s).includes('cast_ids'));
+console.log('PASS: casting, scene overrides, scenery, locked artwork, combined references, budget and repeat reviews');

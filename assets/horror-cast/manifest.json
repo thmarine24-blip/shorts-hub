@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "assets": [
+    {"id":"elias-vale-v1","title":"Elias Vale — character reference","character_name":"Elias Vale","character_description":"Lean young man with medium-brown skin, short black curls and a silver temple streak, teal glasses, burgundy windbreaker, charcoal shirt and red-and-black cassette recorder.","aliases":["Elias"],"kind":"image","reference_only":true,"file":"elias-vale-reference-sheet.png","tags":["character reference","horror comic","Elias Vale"],"creator":"Original Shorts Hub character pack","license":"Original AI-generated project asset"},
+    {"id":"mara-velez-v1","title":"Mara Velez — character reference","character_name":"Mara Velez","character_description":"Athletic investigator with olive skin, short auburn hair with a left undercut, eyebrow notch, forest-green jacket, black mock-neck, brass compass necklace and cream portable radio.","aliases":["Mara"],"kind":"image","reference_only":true,"file":"mara-velez-reference-sheet.png","tags":["character reference","horror comic","Mara Velez"],"creator":"Original Shorts Hub character pack","license":"Original AI-generated project asset"},
+    {"id":"broadcast-hollow-v1","title":"The Broadcast Hollow — character reference","character_name":"The Broadcast Hollow","character_description":"Tall thin entity in a black coat, cracked ivory radio-speaker faceplate with rusty-red glow, long jointed dark fingers, copper wires at the collar and a circular throat tuning dial.","aliases":["Broadcast Hollow"],"kind":"image","reference_only":true,"file":"broadcast-hollow-reference-sheet.png","tags":["character reference","horror comic","Broadcast Hollow"],"creator":"Original Shorts Hub character pack","license":"Original AI-generated project asset"}
+  ]
+}
